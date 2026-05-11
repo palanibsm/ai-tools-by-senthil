@@ -14,7 +14,7 @@ export const tools: ToolItem[] = [
   },
   {
     name: "Language Translator",
-    slug: "/eng-2-tamil",
+    slug: "/language-translator",
     description: "Translate from source language to destination language in real-time.",
     status: "live"
   },
