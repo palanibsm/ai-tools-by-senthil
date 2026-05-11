@@ -4,8 +4,31 @@ import { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
 type TableRow = Record<string, string>;
+type NumericOperator = ">=" | "<=" | "=";
+type FilterState = {
+  type: "text" | "number";
+  value: string;
+  operator?: NumericOperator;
+};
 
 const normalize = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+
+const isSNoColumn = (col: string) => {
+  const n = col.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return n === "sno" || n === "serialno" || n === "serialnumber";
+};
+
+const parseNumber = (value: string): number | null => {
+  const cleaned = String(value)
+    .replace(/,/g, "")
+    .replace(/%/g, "")
+    .replace(/₹/g, "")
+    .trim();
+
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+};
 
 export default function ScreenerAnalysisPage() {
   const [rows, setRows] = useState<TableRow[]>([]);
@@ -13,7 +36,26 @@ export default function ScreenerAnalysisPage() {
   const [fileName, setFileName] = useState("");
   const [sheetName, setSheetName] = useState("");
   const [error, setError] = useState("");
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [filters, setFilters] = useState<Record<string, FilterState>>({});
+
+  const visibleFilterColumns = useMemo(() => columns.filter((c) => !isSNoColumn(c)), [columns]);
+
+  const numericColumns = useMemo(() => {
+    const result = new Set<string>();
+    if (!rows.length) return result;
+
+    for (const col of columns) {
+      const values = rows.map((r) => (r[col] ?? "").trim()).filter((v) => v !== "");
+      if (!values.length) continue;
+
+      const numericCount = values.filter((v) => parseNumber(v) !== null).length;
+      const ratio = numericCount / values.length;
+
+      if (ratio >= 0.8) result.add(col);
+    }
+
+    return result;
+  }, [rows, columns]);
 
   const handleUpload = async (file: File) => {
     setError("");
@@ -35,7 +77,6 @@ export default function ScreenerAnalysisPage() {
       setSheetName(firstSheetName);
       const ws = wb.Sheets[firstSheetName];
 
-      // Read first tab exactly as-is (header row + values)
       const matrix = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, {
         header: 1,
         defval: "",
@@ -70,11 +111,6 @@ export default function ScreenerAnalysisPage() {
         .filter((r) => resolvedHeaders.some((c) => (r[c] ?? "") !== ""));
 
       setRows(dataRows);
-      const initialFilters: Record<string, string> = {};
-      resolvedHeaders.forEach((c) => {
-        initialFilters[c] = "";
-      });
-      setFilters(initialFilters);
     } catch {
       setError("Failed to parse Excel. Please upload a valid .xlsx/.xls file.");
     }
@@ -84,14 +120,27 @@ export default function ScreenerAnalysisPage() {
     if (!rows.length) return [];
 
     return rows.filter((row) => {
-      return columns.every((col) => {
-        const filterValue = (filters[col] ?? "").trim();
-        if (!filterValue) return true;
-        const cellValue = String(row[col] ?? "");
-        return normalize(cellValue).includes(normalize(filterValue));
+      return visibleFilterColumns.every((col) => {
+        const filter = filters[col];
+        if (!filter || !filter.value.trim()) return true;
+
+        const cellValue = String(row[col] ?? "").trim();
+
+        if (filter.type === "number") {
+          const rowNum = parseNumber(cellValue);
+          const filterNum = Number(filter.value);
+          if (rowNum === null || !Number.isFinite(filterNum)) return false;
+
+          const op = filter.operator ?? ">=";
+          if (op === ">=") return rowNum >= filterNum;
+          if (op === "<=") return rowNum <= filterNum;
+          return rowNum === filterNum;
+        }
+
+        return normalize(cellValue).includes(normalize(filter.value));
       });
     });
-  }, [rows, columns, filters]);
+  }, [rows, visibleFilterColumns, filters]);
 
   const handleDownloadCsv = () => {
     if (!columns.length) return;
@@ -163,22 +212,77 @@ export default function ScreenerAnalysisPage() {
               </button>
             </div>
 
-            <p className="text-sm text-slate-600">
-              Showing {filteredRows.length} of {rows.length} rows.
-            </p>
+            <p className="text-sm text-slate-600">Showing {filteredRows.length} of {rows.length} rows.</p>
 
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {columns.map((col) => (
-                <label key={col} className="text-sm">
-                  <span className="mb-1 block font-medium text-slate-700">{col}</span>
-                  <input
-                    className="w-full rounded border px-3 py-2"
-                    placeholder={`Filter ${col}`}
-                    value={filters[col] ?? ""}
-                    onChange={(e) => setFilters((prev) => ({ ...prev, [col]: e.target.value }))}
-                  />
-                </label>
-              ))}
+              {visibleFilterColumns.map((col) => {
+                const isNumeric = numericColumns.has(col);
+                const filter = filters[col] ?? {
+                  type: isNumeric ? "number" : "text",
+                  value: "",
+                  operator: ">=" as NumericOperator,
+                };
+
+                return (
+                  <div key={col} className="text-sm">
+                    <span className="mb-1 block font-medium text-slate-700">{col}</span>
+
+                    {isNumeric ? (
+                      <div className="flex gap-2">
+                        <select
+                          className="rounded border px-2 py-2"
+                          value={filter.operator ?? ">="}
+                          onChange={(e) =>
+                            setFilters((prev) => ({
+                              ...prev,
+                              [col]: {
+                                type: "number",
+                                value: prev[col]?.value ?? "",
+                                operator: e.target.value as NumericOperator,
+                              },
+                            }))
+                          }
+                        >
+                          <option value=">=">&gt;=</option>
+                          <option value="<=">&lt;=</option>
+                          <option value="=">=</option>
+                        </select>
+                        <input
+                          type="number"
+                          className="w-full rounded border px-3 py-2"
+                          placeholder={`Filter ${col}`}
+                          value={filter.value}
+                          onChange={(e) =>
+                            setFilters((prev) => ({
+                              ...prev,
+                              [col]: {
+                                type: "number",
+                                value: e.target.value,
+                                operator: prev[col]?.operator ?? ">=",
+                              },
+                            }))
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <input
+                        className="w-full rounded border px-3 py-2"
+                        placeholder={`Filter ${col}`}
+                        value={filter.value}
+                        onChange={(e) =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            [col]: {
+                              type: "text",
+                              value: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
