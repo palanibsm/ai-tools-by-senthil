@@ -1,42 +1,49 @@
-# youtube-test
+# AI Tools by Senthil
 
-Simple Python Flask web app with tests.
+A single Next.js app hosting multiple mini tools under one domain.
 
-## Team Expense Splitter (MVP)
-A simple web app to track shared expenses (lunch, picnic, etc.) and calculate who should pay whom.
+## Routes
+- `/` - Home page with all tools
+- `/expensesplitter` - Expense Splitter
+- `/eng-2-tamil` - English to Tamil converter (starter)
 
-### Features
-- Add members for an event
-- Add expenses with:
-  - description
-  - amount
-  - paid by
-  - participants
-- Auto-calculate:
-  - per-person net balances
-  - settlement instructions (who pays whom)
-- Reset event data
+## Tech Stack
+- Next.js 14 (App Router)
+- React 18
+- TypeScript
+- Tailwind CSS
 
-## API Endpoints
-- `GET /` → HTML web UI (or JSON hello message if `Accept: application/json`)
-- `GET /health` → `{ "status": "ok" }`
-- `GET /expenses` → list all expenses
-- `POST /expenses` → add one expense
-- `GET /summary` → total, balances, settlements
-- `POST /reset` → clear current data
-
-## Setup
+## Run locally
 ```bash
-python3 -m ensurepip --user
-python3 -m pip install --user -r requirements.txt
+cd ai-tools-by-senthil
+npm install
+npm run dev
 ```
 
-## Run app
+Open: `http://localhost:3000`
+
+## Deploy to Vercel
+### One-time setup
 ```bash
-python3 app.py
+cd ai-tools-by-senthil
+npm install
+npm run vercel:pull
 ```
 
-## Run tests
+### Production deploy
 ```bash
-~/.local/bin/pytest -q
+npm run vercel:build
+npm run vercel:deploy
 ```
+
+Or direct:
+```bash
+vercel --prod --yes
+```
+
+Project name should be: `ai-tools-by-senthil`
+
+Expected URLs:
+- `https://ai-tools-by-senthil.vercel.app/`
+- `https://ai-tools-by-senthil.vercel.app/expensesplitter`
+- `https://ai-tools-by-senthil.vercel.app/eng-2-tamil`
