@@ -83,6 +83,8 @@ export default function LanguageTranslatorPage() {
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
+  const speechRetryCountRef = useRef(0);
+  const speechRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const speechSupported = typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -105,7 +107,25 @@ export default function LanguageTranslatorPage() {
   useEffect(() => localStorage.setItem(SOURCE_KEY, sourceLang), [sourceLang]);
   useEffect(() => localStorage.setItem(TARGET_KEY, targetLang), [targetLang]);
 
+  useEffect(() => {
+    return () => {
+      if (speechRetryTimerRef.current) clearTimeout(speechRetryTimerRef.current);
+    };
+  }, []);
+
   const sourceLocale = useMemo(() => LANGUAGES.find((l) => l.code === sourceLang)?.speechLocale || "en-US", [sourceLang]);
+
+  const logSpeechEvent = async (payload: Record<string, unknown>) => {
+    try {
+      await fetch("/api/speech-log", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Ignore telemetry failures
+    }
+  };
 
   useEffect(() => {
     if (!inputText.trim()) {
@@ -174,6 +194,8 @@ export default function LanguageTranslatorPage() {
     setErrorMsg("");
     if (!speechSupported) return setErrorMsg("Speech input not supported in this browser.");
     if (isListening) {
+      if (speechRetryTimerRef.current) clearTimeout(speechRetryTimerRef.current);
+      speechRetryCountRef.current = 0;
       recognitionRef.current?.stop();
       setIsListening(false);
       return;
@@ -204,12 +226,39 @@ export default function LanguageTranslatorPage() {
     };
 
     recognition.onerror = (event) => {
-      setErrorMsg(event.message || `Speech error: ${event.error}`);
+      const errorCode = event?.error || "unknown";
+      const msg = event?.message || "";
+      logSpeechEvent({ event: "speech_error", error: errorCode, message: msg, lang: sourceLocale });
+
+      if (errorCode === "network" && speechRetryCountRef.current < 2) {
+        speechRetryCountRef.current += 1;
+        const retryInMs = speechRetryCountRef.current * 800;
+        setErrorMsg(`Speech network issue. Retrying (${speechRetryCountRef.current}/2)...`);
+        if (speechRetryTimerRef.current) clearTimeout(speechRetryTimerRef.current);
+        speechRetryTimerRef.current = setTimeout(() => {
+          try {
+            recognition.start();
+          } catch {
+            setErrorMsg("Speech service temporarily unavailable. Please tap Start Mic again.");
+            setIsListening(false);
+          }
+        }, retryInMs);
+        return;
+      }
+
+      setErrorMsg(errorCode === "network" ? "Speech service temporarily unavailable. Please retry." : (msg || `Speech error: ${errorCode}`));
       setIsListening(false);
     };
-    recognition.onend = () => setIsListening(false);
+
+    recognition.onend = () => {
+      setIsListening(false);
+      logSpeechEvent({ event: "speech_end", lang: sourceLocale });
+    };
+
     recognition.start();
+    logSpeechEvent({ event: "speech_start", lang: sourceLocale });
     recognitionRef.current = recognition;
+    speechRetryCountRef.current = 0;
     setIsListening(true);
   };
 
