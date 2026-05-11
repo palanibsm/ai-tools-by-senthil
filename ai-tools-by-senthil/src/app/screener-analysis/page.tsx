@@ -11,6 +11,8 @@ type FilterState = {
   operator?: NumericOperator;
 };
 
+type SortDirection = "asc" | "desc";
+
 const normalize = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
 const isSNoColumn = (col: string) => {
@@ -37,6 +39,8 @@ export default function ScreenerAnalysisPage() {
   const [sheetName, setSheetName] = useState("");
   const [error, setError] = useState("");
   const [filters, setFilters] = useState<Record<string, FilterState>>({});
+  const [sortColumn, setSortColumn] = useState<string>("");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   const visibleFilterColumns = useMemo(() => columns.filter((c) => !isSNoColumn(c)), [columns]);
 
@@ -62,6 +66,8 @@ export default function ScreenerAnalysisPage() {
     setRows([]);
     setColumns([]);
     setFilters({});
+    setSortColumn("");
+    setSortDirection("asc");
     setFileName(file.name);
 
     try {
@@ -142,11 +148,43 @@ export default function ScreenerAnalysisPage() {
     });
   }, [rows, visibleFilterColumns, filters]);
 
+  const sortedRows = useMemo(() => {
+    if (!sortColumn) return filteredRows;
+
+    const sorted = [...filteredRows].sort((a, b) => {
+      const av = String(a[sortColumn] ?? "").trim();
+      const bv = String(b[sortColumn] ?? "").trim();
+
+      if (numericColumns.has(sortColumn)) {
+        const an = parseNumber(av);
+        const bn = parseNumber(bv);
+        if (an === null && bn === null) return 0;
+        if (an === null) return 1;
+        if (bn === null) return -1;
+        return an - bn;
+      }
+
+      return av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+    });
+
+    return sortDirection === "asc" ? sorted : sorted.reverse();
+  }, [filteredRows, sortColumn, sortDirection, numericColumns]);
+
+  const toggleSort = (col: string) => {
+    if (sortColumn !== col) {
+      setSortColumn(col);
+      setSortDirection("asc");
+      return;
+    }
+
+    setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+  };
+
   const handleDownloadCsv = () => {
     if (!columns.length) return;
 
     const aoa: string[][] = [columns];
-    for (const row of filteredRows) {
+    for (const row of sortedRows) {
       aoa.push(columns.map((c) => row[c] ?? ""));
     }
 
@@ -212,7 +250,7 @@ export default function ScreenerAnalysisPage() {
               </button>
             </div>
 
-            <p className="text-sm text-slate-600">Showing {filteredRows.length} of {rows.length} rows.</p>
+            <p className="text-sm text-slate-600">Showing {sortedRows.length} of {rows.length} rows.</p>
 
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {visibleFilterColumns.map((col) => {
@@ -292,13 +330,23 @@ export default function ScreenerAnalysisPage() {
                 <tr className="border-b bg-slate-50">
                   {columns.map((col) => (
                     <th key={col} className="px-3 py-2 text-left font-semibold whitespace-nowrap">
-                      {col}
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(col)}
+                        className="inline-flex items-center gap-1 hover:text-slate-900"
+                        title={`Sort by ${col}`}
+                      >
+                        <span>{col}</span>
+                        <span className="text-xs text-slate-500">
+                          {sortColumn === col ? (sortDirection === "asc" ? "▲" : "▼") : "↕"}
+                        </span>
+                      </button>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((row, idx) => (
+                {sortedRows.map((row, idx) => (
                   <tr key={idx} className="border-b last:border-0">
                     {columns.map((col) => (
                       <td key={col} className="px-3 py-2 whitespace-nowrap">
