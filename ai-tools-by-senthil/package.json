@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "vercel:pull": "vercel pull --yes --environment=production",
     "vercel:build": "vercel build --prod",
-    "vercel:deploy": "vercel deploy --prebuilt --prod"
+    "vercel:deploy": "vercel deploy --prebuilt --prod",
+    "docs:routes": "node scripts/update-readme-routes.mjs"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

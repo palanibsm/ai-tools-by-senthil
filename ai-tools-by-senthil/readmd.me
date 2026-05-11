@@ -8,28 +8,35 @@ There are currently **3 built and listed apps** on the home page:
 - **Language Translator** → `/language-translator`
 - **Screener Analysis** → `/screener-analysis`
 
-## Route map (current)
+## Route map (auto-generated)
 ### Public tool routes
-- `/` (home)
+- `/`
 - `/expensesplitter`
 - `/language-translator`
 - `/screener-analysis`
 
 ### Additional routes available in codebase
-- `/eng-2-tamil`
 - `/admin-console`
-- `/tool-3` to `/tool-10` (placeholders)
+- `/eng-2-tamil`
+- `/tool-10`
+- `/tool-3`
+- `/tool-4`
+- `/tool-5`
+- `/tool-6`
+- `/tool-7`
+- `/tool-8`
+- `/tool-9`
 
 ### API routes
-- `/api/translate`
-- `/api/speech-log`
-- `/api/expense-parse`
-- `/api/auth/register`
+- `/api/admin/decision`
+- `/api/admin/users`
 - `/api/auth/login`
 - `/api/auth/logout`
 - `/api/auth/me`
-- `/api/admin/users`
-- `/api/admin/decision`
+- `/api/auth/register`
+- `/api/expense-parse`
+- `/api/speech-log`
+- `/api/translate`
 
 ## High-level architecture
 - Frontend: Next.js App Router + React + Tailwind CSS
@@ -47,6 +54,9 @@ There are currently **3 built and listed apps** on the home page:
 1. Install deps: `npm install`
 2. Start dev server: `npm run dev`
 3. Open: `http://localhost:3000`
+
+## Keep docs updated
+- Run `npm run docs:routes` after adding/removing pages or API routes.
 
 ## Environment notes
 - Set `OPENAI_API_KEY` for OpenAI-backed features.

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type AuthState = { authenticated: boolean; username?: string; role?: "admin" | "user" };
 
@@ -12,6 +12,8 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
 
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
   async function refreshAuth() {
     const res = await fetch("/api/auth/me", { cache: "no-store" });
     const data = await res.json();
@@ -21,6 +23,31 @@ export default function Navbar() {
   useEffect(() => {
     refreshAuth();
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      if (panelRef.current && !panelRef.current.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   async function onRegister() {
     setMsg("");
@@ -48,12 +75,14 @@ export default function Navbar() {
     setMsg("Logged in");
     setPassword("");
     await refreshAuth();
+    setOpen(false);
   }
 
   async function onLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     setMsg("Logged out");
     await refreshAuth();
+    setOpen(false);
   }
 
   return (
@@ -68,7 +97,7 @@ export default function Navbar() {
             Home
           </Link>
 
-          <div className="relative">
+          <div className="relative" ref={panelRef}>
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
@@ -84,7 +113,11 @@ export default function Navbar() {
                     <p className="text-slate-600">Logged in as <strong>{auth.username}</strong> ({auth.role})</p>
                     <div className="flex gap-2">
                       {auth.role === "admin" && (
-                        <Link href="/admin-console" className="rounded-lg border px-3 py-2 hover:bg-slate-50">
+                        <Link
+                          href="/admin-console"
+                          onClick={() => setOpen(false)}
+                          className="rounded-lg border px-3 py-2 hover:bg-slate-50"
+                        >
                           Admin console
                         </Link>
                       )}
