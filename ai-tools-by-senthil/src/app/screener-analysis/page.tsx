@@ -72,12 +72,12 @@ export default function ScreenerAnalysisPage() {
       if (searchLower && !row.name.toLowerCase().includes(searchLower)) return false;
 
       if (minMc !== null) {
-        const mc = numberFromValue(row.metrics["Mar Cap"] || "");
+        const mc = numberFromValue(row.metrics["Market Capitalization"] || "");
         if (mc === null || mc < minMc) return false;
       }
 
       if (maxPe !== null) {
-        const pe = numberFromValue(row.metrics["P/E"] || "");
+        const pe = numberFromValue(row.metrics["Price to Earning"] || "");
         if (pe === null || pe > maxPe) return false;
       }
 
@@ -148,6 +148,7 @@ export default function ScreenerAnalysisPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b bg-slate-50">
+                  <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Name</th>
                   {data.columns.map((col) => (
                     <th key={col} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{col}</th>
                   ))}
@@ -156,17 +157,17 @@ export default function ScreenerAnalysisPage() {
               <tbody>
                 {filteredRows.map((row, idx) => (
                   <tr key={`${row.name}-${idx}`} className="border-b last:border-0">
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {row.companyPath ? (
+                        <a className="text-blue-700 underline" href={`https://www.screener.in${row.companyPath}`} target="_blank">
+                          {row.name}
+                        </a>
+                      ) : (
+                        row.name
+                      )}
+                    </td>
                     {data.columns.map((col) => {
                       const val = row.metrics[col] || "-";
-                      if (col === "Name" && row.companyPath) {
-                        return (
-                          <td key={col} className="px-3 py-2 whitespace-nowrap">
-                            <a className="text-blue-700 underline" href={`https://www.screener.in${row.companyPath}`} target="_blank">
-                              {val}
-                            </a>
-                          </td>
-                        );
-                      }
                       return <td key={col} className="px-3 py-2 whitespace-nowrap">{val}</td>;
                     })}
                   </tr>
