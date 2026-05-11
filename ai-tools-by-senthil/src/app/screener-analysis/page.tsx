@@ -116,6 +116,19 @@ export default function ScreenerAnalysisPage() {
         filtering, and let you download filtered CSV.
       </p>
 
+      <div className="rounded-xl border bg-white p-4 space-y-2">
+        <h2 className="font-semibold">How to prepare your Screener Excel (manual steps)</h2>
+        <ol className="list-decimal pl-5 text-sm text-slate-700 space-y-1">
+          <li>Login to Screener with your account.</li>
+          <li>Open the sector/watchlist you want to analyze.</li>
+          <li>Click <strong>Edit Columns</strong> and keep only the columns you need.</li>
+          <li>Click <strong>Save Columns</strong>.</li>
+          <li>From the table, click <strong>Export</strong> and download the Excel file.</li>
+          <li>Make sure the data you want is in the <strong>first sheet/tab</strong>.</li>
+          <li>Upload that file below.</li>
+        </ol>
+      </div>
+
       <div className="rounded-xl border bg-white p-4 space-y-3">
         <h2 className="font-semibold">Upload Excel</h2>
         <input
