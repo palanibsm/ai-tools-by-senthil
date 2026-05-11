@@ -385,7 +385,10 @@ export default function ExpenseSplitterPage() {
           )}
         </div>
 
-        <button className="rounded-lg border px-3 py-2 hover:bg-slate-50" onClick={addExpense}>
+        <button
+          className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 font-semibold text-white shadow-md transition hover:from-emerald-500 hover:to-teal-500 hover:shadow-lg"
+          onClick={addExpense}
+        >
           Add expense
         </button>
         {message && <p className="text-sm text-slate-600">{message}</p>}
