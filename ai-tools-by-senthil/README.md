@@ -5,7 +5,7 @@ A single Next.js app hosting multiple mini tools under one domain.
 ## Routes
 - `/` - Home page with all tools
 - `/expensesplitter` - Expense Splitter (members, expense log, equal/custom shares, settlement)
-- `/eng-2-tamil` - English to Tamil converter (starter)
+- `/eng-2-tamil` - Language Translator (source → destination, typing + speech, real-time)
 
 ## Tech Stack
 - Next.js 14 (App Router)
