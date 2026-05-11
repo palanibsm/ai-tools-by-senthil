@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
 type TableRow = Record<string, string>;
@@ -14,10 +14,17 @@ type FilterState = {
 type SortDirection = "asc" | "desc";
 
 const normalize = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+const compact = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+const FILTER_STORAGE_KEY = "screener-analysis-filters-v1";
 
 const isSNoColumn = (col: string) => {
   const n = col.toLowerCase().replace(/[^a-z0-9]/g, "");
   return n === "sno" || n === "serialno" || n === "serialnumber";
+};
+
+const isMarCapColumn = (col: string) => {
+  const n = compact(col);
+  return n.includes("marcap") || n.includes("marketcapitalization");
 };
 
 const parseNumber = (value: string): number | null => {
@@ -44,6 +51,28 @@ export default function ScreenerAnalysisPage() {
 
   const visibleFilterColumns = useMemo(() => columns.filter((c) => !isSNoColumn(c)), [columns]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        filters?: Record<string, FilterState>;
+        sortColumn?: string;
+        sortDirection?: SortDirection;
+      };
+      if (parsed.filters && typeof parsed.filters === "object") setFilters(parsed.filters);
+      if (parsed.sortColumn && typeof parsed.sortColumn === "string") setSortColumn(parsed.sortColumn);
+      if (parsed.sortDirection === "asc" || parsed.sortDirection === "desc") setSortDirection(parsed.sortDirection);
+    } catch {
+      // ignore invalid local data
+    }
+  }, []);
+
+  useEffect(() => {
+    const payload = JSON.stringify({ filters, sortColumn, sortDirection });
+    localStorage.setItem(FILTER_STORAGE_KEY, payload);
+  }, [filters, sortColumn, sortDirection]);
+
   const numericColumns = useMemo(() => {
     const result = new Set<string>();
     if (!rows.length) return result;
@@ -65,9 +94,6 @@ export default function ScreenerAnalysisPage() {
     setError("");
     setRows([]);
     setColumns([]);
-    setFilters({});
-    setSortColumn("");
-    setSortDirection("asc");
     setFileName(file.name);
 
     try {
@@ -122,28 +148,32 @@ export default function ScreenerAnalysisPage() {
     }
   };
 
+  const rowMatchesFilter = (row: TableRow, col: string, filter?: FilterState) => {
+    if (!filter || !filter.value.trim()) return true;
+
+    const cellValue = String(row[col] ?? "").trim();
+
+    if (filter.type === "number") {
+      const rowNum = parseNumber(cellValue);
+      const filterNum = Number(filter.value);
+      if (rowNum === null || !Number.isFinite(filterNum)) return false;
+
+      const op = filter.operator ?? ">=";
+      if (op === ">=") return rowNum >= filterNum;
+      if (op === "<=") return rowNum <= filterNum;
+      return rowNum === filterNum;
+    }
+
+    return normalize(cellValue).includes(normalize(filter.value));
+  };
+
   const filteredRows = useMemo(() => {
     if (!rows.length) return [];
 
     return rows.filter((row) => {
       return visibleFilterColumns.every((col) => {
-        const filter = filters[col];
-        if (!filter || !filter.value.trim()) return true;
-
-        const cellValue = String(row[col] ?? "").trim();
-
-        if (filter.type === "number") {
-          const rowNum = parseNumber(cellValue);
-          const filterNum = Number(filter.value);
-          if (rowNum === null || !Number.isFinite(filterNum)) return false;
-
-          const op = filter.operator ?? ">=";
-          if (op === ">=") return rowNum >= filterNum;
-          if (op === "<=") return rowNum <= filterNum;
-          return rowNum === filterNum;
-        }
-
-        return normalize(cellValue).includes(normalize(filter.value));
+        if (isMarCapColumn(col)) return true; // do not filter records by Mar Cap
+        return rowMatchesFilter(row, col, filters[col]);
       });
     });
   }, [rows, visibleFilterColumns, filters]);
@@ -251,6 +281,9 @@ export default function ScreenerAnalysisPage() {
             </div>
 
             <p className="text-sm text-slate-600">Showing {sortedRows.length} of {rows.length} rows.</p>
+            <p className="text-xs text-slate-500">
+              Mar Cap filter will not remove rows. It only colors Mar Cap cells: green = condition met, yellow = not met.
+            </p>
 
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {visibleFilterColumns.map((col) => {
@@ -263,7 +296,10 @@ export default function ScreenerAnalysisPage() {
 
                 return (
                   <div key={col} className="text-sm">
-                    <span className="mb-1 block font-medium text-slate-700">{col}</span>
+                    <span className="mb-1 block font-medium text-slate-700">
+                      {col}
+                      {isMarCapColumn(col) ? " (highlight only)" : ""}
+                    </span>
 
                     {isNumeric ? (
                       <div className="flex gap-2">
@@ -348,11 +384,21 @@ export default function ScreenerAnalysisPage() {
               <tbody>
                 {sortedRows.map((row, idx) => (
                   <tr key={idx} className="border-b last:border-0">
-                    {columns.map((col) => (
-                      <td key={col} className="px-3 py-2 whitespace-nowrap">
-                        {row[col] || ""}
-                      </td>
-                    ))}
+                    {columns.map((col) => {
+                      const marCapHit = isMarCapColumn(col) ? rowMatchesFilter(row, col, filters[col]) : false;
+                      const marCapFilterEnabled = isMarCapColumn(col) && Boolean(filters[col]?.value?.trim());
+                      const bgClass = marCapFilterEnabled
+                        ? marCapHit
+                          ? " bg-green-200"
+                          : " bg-yellow-200"
+                        : "";
+
+                      return (
+                        <td key={col} className={`px-3 py-2 whitespace-nowrap${bgClass}`}>
+                          {row[col] || ""}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
