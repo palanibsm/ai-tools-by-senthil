@@ -1,13 +1,45 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 
-type Sector = { name: string; path: string; url: string };
-type SectorData = {
-  sectorName: string;
-  sourceUrl: string;
-  columns: string[];
-  rows: Array<{ name: string; companyPath: string; metrics: Record<string, string> }>;
+type UploadRow = {
+  name: string;
+  metrics: Record<string, string>;
+};
+
+const OUTPUT_COLUMNS = [
+  "Price to Earning",
+  "Price to book value",
+  "Market Capitalization",
+  "EPS",
+  "Debt to equity",
+  "OPM",
+  "Profit growth 3Years",
+] as const;
+
+const COLUMN_ALIASES: Record<(typeof OUTPUT_COLUMNS)[number], string[]> = {
+  "Price to Earning": ["P/E", "PE", "Price to Earning"],
+  "Price to book value": ["CMP / BV", "CMP/BV", "Price to book value", "P/B"],
+  "Market Capitalization": ["Mar Cap Rs.Cr.", "Mar Cap", "Market Capitalization", "Mkt Cap"],
+  EPS: ["EPS 12M Rs.", "EPS", "EPS TTM"],
+  "Debt to equity": ["Debt / Eq", "Debt/Eq", "Debt to equity"],
+  OPM: ["OPM %", "OPM"],
+  "Profit growth 3Years": ["Profit Var 3Yrs", "Profit Var 3Yrs %", "Profit growth 3Years"],
+};
+
+const normalize = (s: string) => s.replace(/\s+/g, " ").replace(/[\.:]/g, "").trim().toLowerCase();
+
+const pickValue = (row: Record<string, unknown>, aliases: string[]) => {
+  const entries = Object.entries(row);
+  for (const a of aliases) {
+    const target = normalize(a);
+    const match = entries.find(([k]) => normalize(k) === target);
+    if (match && match[1] !== undefined && match[1] !== null && String(match[1]).trim() !== "") {
+      return String(match[1]).trim();
+    }
+  }
+  return "-";
 };
 
 const numberFromValue = (value: string) => {
@@ -17,58 +49,55 @@ const numberFromValue = (value: string) => {
 };
 
 export default function ScreenerAnalysisPage() {
-  const [sectors, setSectors] = useState<Sector[]>([]);
-  const [selectedPath, setSelectedPath] = useState("");
-  const [data, setData] = useState<SectorData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<UploadRow[]>([]);
+  const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
   const [minMarketCap, setMinMarketCap] = useState("");
   const [maxPE, setMaxPE] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      setError("");
-      const res = await fetch("/api/screener/sectors", { cache: "no-store" });
-      const payload = await res.json();
-      if (!res.ok) {
-        setError(payload.error || "Failed to load sectors");
-        return;
-      }
-      setSectors(payload.sectors || []);
-      if ((payload.sectors || []).length > 0) {
-        setSelectedPath(payload.sectors[0].path);
-      }
-    })();
-  }, []);
-
-  const loadSector = async () => {
-    if (!selectedPath) return;
-    setLoading(true);
+  const handleUpload = async (file: File) => {
     setError("");
+    setRows([]);
+    setFileName(file.name);
+
     try {
-      const res = await fetch(`/api/screener/sector-data?path=${encodeURIComponent(selectedPath)}`, { cache: "no-store" });
-      const payload = await res.json();
-      if (!res.ok) {
-        setError(payload.error || "Failed to load sector data");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+
+      if (!jsonRows.length) {
+        setError("Excel file is empty.");
         return;
       }
-      setData(payload);
+
+      const parsed: UploadRow[] = jsonRows
+        .map((r) => {
+          const name = String(r["Name"] ?? r["name"] ?? "").trim();
+          if (!name) return null;
+          const metrics: Record<string, string> = {};
+          for (const col of OUTPUT_COLUMNS) {
+            metrics[col] = pickValue(r, COLUMN_ALIASES[col]);
+          }
+          return { name, metrics };
+        })
+        .filter((r): r is UploadRow => Boolean(r));
+
+      setRows(parsed);
     } catch {
-      setError("Network error while loading sector data");
-    } finally {
-      setLoading(false);
+      setError("Failed to parse Excel. Please upload .xlsx exported from Screener.");
     }
   };
 
   const filteredRows = useMemo(() => {
-    if (!data) return [];
     const searchLower = search.trim().toLowerCase();
     const minMc = minMarketCap ? Number(minMarketCap) : null;
     const maxPe = maxPE ? Number(maxPE) : null;
 
-    return data.rows.filter((row) => {
+    return rows.filter((row) => {
       if (searchLower && !row.name.toLowerCase().includes(searchLower)) return false;
 
       if (minMc !== null) {
@@ -83,42 +112,46 @@ export default function ScreenerAnalysisPage() {
 
       return true;
     });
-  }, [data, search, minMarketCap, maxPE]);
+  }, [rows, search, minMarketCap, maxPE]);
 
   return (
     <section className="space-y-6">
-      <h1 className="text-2xl font-bold">Screener Analysis</h1>
-      <p className="text-slate-600">Browse sector data from Screener and filter companies quickly.</p>
+      <h1 className="text-2xl font-bold">Screener Analysis (Excel Upload)</h1>
+      <p className="text-slate-600">Upload Screener Excel export and analyze only the selected columns.</p>
+
+      <div className="rounded-xl border bg-white p-4 space-y-2">
+        <h2 className="font-semibold">How to export from Screener (manual steps)</h2>
+        <ol className="list-decimal pl-5 text-sm text-slate-700 space-y-1">
+          <li>Login to Screener with your account.</li>
+          <li>Go to <strong>Browse Sectors</strong> and open the target sector (example: Capital Markets).</li>
+          <li>Click <strong>Edit Columns</strong>.</li>
+          <li>Keep only these columns: Price to Earning, Price to book value, Market Capitalization, EPS, Debt to equity, OPM, Profit growth 3Years.</li>
+          <li>Click <strong>Save Columns</strong>.</li>
+          <li>Go back to the sector company table and ensure all pages are visible for that sector.</li>
+          <li>Click <strong>Export</strong> and download the Excel file.</li>
+          <li>Upload that Excel file below.</li>
+        </ol>
+      </div>
 
       <div className="rounded-xl border bg-white p-4 space-y-3">
-        <h2 className="font-semibold">Load Sector</h2>
-        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-          <select
-            className="rounded border px-3 py-2"
-            value={selectedPath}
-            onChange={(e) => setSelectedPath(e.target.value)}
-          >
-            <option value="">Select sector</option>
-            {sectors.map((s) => (
-              <option key={s.path} value={s.path}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <button className="rounded-lg border px-3 py-2 hover:bg-slate-50" onClick={loadSector} disabled={loading || !selectedPath}>
-            {loading ? "Loading..." : "Load companies"}
-          </button>
-        </div>
+        <h2 className="font-semibold">Upload Excel</h2>
+        <input
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleUpload(f);
+          }}
+          className="block w-full rounded border px-3 py-2"
+        />
+        {fileName && <p className="text-sm text-slate-600">Loaded: {fileName}</p>}
         {error && <p className="text-sm text-red-700">{error}</p>}
       </div>
 
-      {data && (
+      {rows.length > 0 && (
         <>
           <div className="rounded-xl border bg-white p-4 space-y-3">
             <h2 className="font-semibold">Filters</h2>
-            <p className="text-sm text-slate-600">
-              Sector: <strong>{data.sectorName}</strong> · Source: <a className="underline" href={data.sourceUrl} target="_blank">Screener</a>
-            </p>
             <div className="grid gap-2 sm:grid-cols-3">
               <input
                 className="rounded border px-3 py-2"
@@ -141,7 +174,7 @@ export default function ScreenerAnalysisPage() {
                 onChange={(e) => setMaxPE(e.target.value)}
               />
             </div>
-            <p className="text-sm text-slate-600">Showing {filteredRows.length} of {data.rows.length} companies.</p>
+            <p className="text-sm text-slate-600">Showing {filteredRows.length} of {rows.length} companies.</p>
           </div>
 
           <div className="rounded-xl border bg-white p-4 overflow-auto">
@@ -149,27 +182,22 @@ export default function ScreenerAnalysisPage() {
               <thead>
                 <tr className="border-b bg-slate-50">
                   <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Name</th>
-                  {data.columns.map((col) => (
-                    <th key={col} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{col}</th>
+                  {OUTPUT_COLUMNS.map((col) => (
+                    <th key={col} className="px-3 py-2 text-left font-semibold whitespace-nowrap">
+                      {col}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filteredRows.map((row, idx) => (
                   <tr key={`${row.name}-${idx}`} className="border-b last:border-0">
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {row.companyPath ? (
-                        <a className="text-blue-700 underline" href={`https://www.screener.in${row.companyPath}`} target="_blank">
-                          {row.name}
-                        </a>
-                      ) : (
-                        row.name
-                      )}
-                    </td>
-                    {data.columns.map((col) => {
-                      const val = row.metrics[col] || "-";
-                      return <td key={col} className="px-3 py-2 whitespace-nowrap">{val}</td>;
-                    })}
+                    <td className="px-3 py-2 whitespace-nowrap">{row.name}</td>
+                    {OUTPUT_COLUMNS.map((col) => (
+                      <td key={col} className="px-3 py-2 whitespace-nowrap">
+                        {row.metrics[col] || "-"}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
