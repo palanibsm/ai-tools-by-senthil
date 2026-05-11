@@ -2,28 +2,45 @@
 
 A multi-tool Next.js application that bundles practical AI/utility workflows into one product.
 
+## Current app status
+There are currently **3 built and listed apps** on the home page:
+- **Expense Splitter** → `/expensesplitter`
+- **Language Translator** → `/language-translator`
+- **Screener Analysis** → `/screener-analysis`
+
+## Route map (current)
+### Public tool routes
+- `/` (home)
+- `/expensesplitter`
+- `/language-translator`
+- `/screener-analysis`
+
+### Additional routes available in codebase
+- `/eng-2-tamil`
+- `/admin-console`
+- `/tool-3` to `/tool-10` (placeholders)
+
+### API routes
+- `/api/translate`
+- `/api/speech-log`
+- `/api/expense-parse`
+- `/api/auth/register`
+- `/api/auth/login`
+- `/api/auth/logout`
+- `/api/auth/me`
+- `/api/admin/users`
+- `/api/admin/decision`
+
 ## High-level architecture
 - Frontend: Next.js App Router + React + Tailwind CSS
 - APIs: Route handlers under `src/app/api/*`
-- Authentication: Cookie/session based endpoints under `/api/auth/*`
-- AI usage:
-  - Translation endpoint (`/api/translate`)
-  - Speech telemetry endpoint (`/api/speech-log`)
-  - Voice expense parsing endpoint (`/api/expense-parse`)
-
-## Sub-apps overview
-- **Expense Splitter** (`/expensesplitter`): Track shared spends, compute balances, and generate who-pays-whom settlements.
-- **Language Translator** (`/language-translator`): Translate text/speech between multiple languages with optional authenticated OpenAI provider.
-- **Screener Analysis** (`/screener-analysis`): Analyze and filter screener/company data for quick market scanning.
-- **Eng 2 Tamil** (`/eng-2-tamil`): Lightweight English-to-Tamil helper.
-- **Admin Console** (`/admin-console`): Access control and user moderation for protected capabilities.
-- **Tool 3 ... Tool 10**: Placeholder slots for upcoming utilities.
+- Authentication: Cookie/session endpoints under `/api/auth/*`
 
 ## Folder map
-- `src/app/*`: Route pages for each sub-app
+- `src/app/*`: Route pages
 - `src/app/api/*`: Server endpoints
 - `src/components/*`: Shared UI components
-- `src/lib/*`: Shared business logic and metadata
+- `src/lib/*`: Business logic + tool metadata
 - `src/styles/*`: Global styling
 
 ## Run locally
