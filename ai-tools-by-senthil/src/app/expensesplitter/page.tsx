@@ -1,7 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { buildSummary, validateExpenseInput, type DraftExpenseInput, type Expense } from "@/lib/expense-splitter";
+
+type SpeechRecognitionType = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+declare global {
+  interface Window {
+    webkitSpeechRecognition?: new () => SpeechRecognitionType;
+    SpeechRecognition?: new () => SpeechRecognitionType;
+  }
+}
 
 export default function ExpenseSplitterPage() {
   const [members, setMembers] = useState<string[]>(["Senthil", "Friend 1"]);
@@ -9,6 +27,11 @@ export default function ExpenseSplitterPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [message, setMessage] = useState<string>("");
   const [currency, setCurrency] = useState<"SGD" | "INR" | "USD" | "EUR">("SGD");
+  const [isListening, setIsListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [isParsingVoice, setIsParsingVoice] = useState(false);
+
+  const recognitionRef = useRef<SpeechRecognitionType | null>(null);
 
   const [draft, setDraft] = useState<DraftExpenseInput>({
     description: "",
@@ -58,6 +81,125 @@ export default function ExpenseSplitterPage() {
       const participants = already ? prev.participants.filter((p) => p !== name) : [...prev.participants, name];
       return { ...prev, participants };
     });
+  };
+
+  const normalizeMemberMatch = (name: string) => name.trim().toLowerCase();
+
+  const applyParsedExpense = (parsed: {
+    description?: string;
+    amount?: number | null;
+    paidBy?: string;
+    participants?: string[];
+  }) => {
+    setDraft((prev) => {
+      const next = { ...prev };
+
+      if (parsed.description && parsed.description.trim()) {
+        next.description = parsed.description.trim();
+      }
+
+      if (typeof parsed.amount === "number" && Number.isFinite(parsed.amount) && parsed.amount > 0) {
+        next.amount = String(parsed.amount);
+      }
+
+      if (parsed.paidBy) {
+        const foundPayer = members.find((m) => normalizeMemberMatch(m) === normalizeMemberMatch(parsed.paidBy || ""));
+        if (foundPayer) next.paidBy = foundPayer;
+      }
+
+      if (Array.isArray(parsed.participants) && parsed.participants.length > 0) {
+        const matched = parsed.participants
+          .map((p) => members.find((m) => normalizeMemberMatch(m) === normalizeMemberMatch(p || "")))
+          .filter((v): v is string => Boolean(v));
+
+        if (matched.length > 0) {
+          const withPayer = next.paidBy ? [...new Set([next.paidBy, ...matched])] : [...new Set(matched)];
+          next.participants = withPayer;
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const parseVoiceExpense = async (transcript: string) => {
+    const text = transcript.trim();
+    if (!text) return;
+
+    setIsParsingVoice(true);
+    setMessage("Parsing voice expense...");
+    try {
+      const res = await fetch("/api/expense-parse", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ transcript: text, members }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(`Voice parse failed: ${data.error || "Unknown error"}`);
+        return;
+      }
+
+      applyParsedExpense(data);
+      setMessage("Voice parsed and fields updated");
+    } catch {
+      setMessage("Voice parse failed due to network issue");
+    } finally {
+      setIsParsingVoice(false);
+    }
+  };
+
+  const toggleVoice = () => {
+    const speechSupported = typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    if (!speechSupported) {
+      setMessage("Speech input is not supported in this browser");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechCtor) return;
+
+    const recognition = new SpeechCtor();
+    recognition.lang = "en-IN";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    let finalTranscript = "";
+    let latestTranscript = "";
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalTranscript = `${finalTranscript} ${t}`.trim();
+        else interim += t;
+      }
+      latestTranscript = `${finalTranscript} ${interim}`.trim();
+      setVoiceTranscript(latestTranscript);
+    };
+
+    recognition.onerror = (event) => {
+      setMessage(`Speech error: ${event?.error || "unknown"}`);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      const text = finalTranscript || latestTranscript;
+      if (text.trim()) parseVoiceExpense(text);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setVoiceTranscript("");
+    setIsListening(true);
+    setMessage("Listening... speak expense details");
   };
 
   const addExpense = () => {
@@ -126,7 +268,19 @@ export default function ExpenseSplitterPage() {
       </div>
 
       <div className="rounded-xl border bg-white p-4 space-y-3">
-        <h2 className="font-semibold">Add Expense</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-semibold">Add Expense</h2>
+          <button
+            type="button"
+            className={`rounded-lg px-3 py-2 text-sm text-white ${isListening ? "bg-red-600 hover:bg-red-500" : "bg-slate-900 hover:bg-slate-700"}`}
+            onClick={toggleVoice}
+            disabled={isParsingVoice}
+          >
+            {isListening ? "Stop Mic" : isParsingVoice ? "Parsing..." : "Voice Fill"}
+          </button>
+        </div>
+
+        {voiceTranscript && <p className="text-xs text-slate-500">Heard: {voiceTranscript}</p>}
 
         <div className="grid gap-2 sm:grid-cols-4">
           <input
