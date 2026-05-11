@@ -8,6 +8,7 @@ export default function ExpenseSplitterPage() {
   const [newMember, setNewMember] = useState("");
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [message, setMessage] = useState<string>("");
+  const [currency, setCurrency] = useState<"SGD" | "INR" | "USD" | "EUR">("SGD");
 
   const [draft, setDraft] = useState<DraftExpenseInput>({
     description: "",
@@ -82,6 +83,12 @@ export default function ExpenseSplitterPage() {
   };
 
   const toTwo = (n: number) => n.toFixed(2);
+  const currencySymbol: Record<typeof currency, string> = {
+    SGD: "S$",
+    INR: "₹",
+    USD: "$",
+    EUR: "€",
+  };
 
   return (
     <section className="space-y-6">
@@ -121,7 +128,7 @@ export default function ExpenseSplitterPage() {
       <div className="rounded-xl border bg-white p-4 space-y-3">
         <h2 className="font-semibold">Add Expense</h2>
 
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-4">
           <input
             className="rounded-lg border px-3 py-2"
             placeholder="Description (Lunch)"
@@ -132,10 +139,21 @@ export default function ExpenseSplitterPage() {
             className="rounded-lg border px-3 py-2"
             type="number"
             step="0.01"
-            placeholder="Amount"
+            placeholder={`Amount (${currency})`}
             value={draft.amount}
             onChange={(e) => setDraft((prev) => ({ ...prev, amount: e.target.value }))}
           />
+          <select
+            className="rounded-lg border px-3 py-2"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value as typeof currency)}
+            aria-label="Currency"
+          >
+            <option value="SGD">SGD (S$)</option>
+            <option value="INR">INR (₹)</option>
+            <option value="USD">USD ($)</option>
+            <option value="EUR">EUR (€)</option>
+          </select>
           <select
             className="rounded-lg border px-3 py-2"
             value={draft.paidBy}
@@ -227,7 +245,7 @@ export default function ExpenseSplitterPage() {
           <ul className="space-y-2 text-sm">
             {expenses.map((e, i) => (
               <li key={`${e.description}-${i}`} className="rounded bg-slate-50 px-3 py-2">
-                {e.description}: ₹{toTwo(e.amount)} paid by <strong>{e.paidBy}</strong> for [{e.participants.join(", ")}]
+                {e.description}: {currencySymbol[currency]}{toTwo(e.amount)} paid by <strong>{e.paidBy}</strong> for [{e.participants.join(", ")}]
                 {e.shareMode === "custom" ? " (custom shares)" : ""}
               </li>
             ))}
@@ -238,7 +256,7 @@ export default function ExpenseSplitterPage() {
       <div className="rounded-xl border bg-white p-4 space-y-3">
         <h2 className="font-semibold">Summary</h2>
         <p>
-          <strong>Total:</strong> ₹{toTwo(summary.totalExpenses)}
+          <strong>Total:</strong> {currencySymbol[currency]}{toTwo(summary.totalExpenses)}
         </p>
 
         <div>
@@ -249,7 +267,7 @@ export default function ExpenseSplitterPage() {
             <ul className="space-y-1 text-sm">
               {Object.entries(summary.balances).map(([name, amount]) => (
                 <li key={name}>
-                  {name}: {toTwo(amount)}
+                  {name}: {currencySymbol[currency]}{toTwo(amount)}
                 </li>
               ))}
             </ul>
@@ -264,7 +282,7 @@ export default function ExpenseSplitterPage() {
             <ul className="space-y-1 text-sm">
               {summary.settlements.map((s, i) => (
                 <li key={`${s.from}-${s.to}-${i}`}>
-                  <strong>{s.from}</strong> pays <strong>{s.to}</strong>: ₹{toTwo(s.amount)}
+                  <strong>{s.from}</strong> pays <strong>{s.to}</strong>: {currencySymbol[currency]}{toTwo(s.amount)}
                 </li>
               ))}
             </ul>
