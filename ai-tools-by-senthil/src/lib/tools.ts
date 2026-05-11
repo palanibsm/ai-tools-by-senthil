@@ -18,7 +18,7 @@ export const tools: ToolItem[] = [
     description: "Translate from source language to destination language in real-time.",
     status: "live"
   },
-  { name: "Tool 3", slug: "/tool-3", description: "Coming soon.", status: "coming-soon" },
+  { name: "Screener Analysis", slug: "/screener-analysis", description: "Browse and filter Screener sector companies.", status: "live" },
   { name: "Tool 4", slug: "/tool-4", description: "Coming soon.", status: "coming-soon" },
   { name: "Tool 5", slug: "/tool-5", description: "Coming soon.", status: "coming-soon" },
   { name: "Tool 6", slug: "/tool-6", description: "Coming soon.", status: "coming-soon" },
