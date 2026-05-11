@@ -3,6 +3,16 @@ import { load } from "cheerio";
 const SCREENER_BASE = "https://www.screener.in";
 const USER_AGENT = "Mozilla/5.0 (compatible; ai-tools-by-senthil/1.0)";
 
+const PREFERRED_COLUMN_LABELS = [
+  "Price to Earning",
+  "Price to book value",
+  "Market Capitalization",
+  "EPS",
+  "Debt to equity",
+  "OPM",
+  "Profit growth 3Years",
+];
+
 export type ScreenerSector = {
   name: string;
   path: string;
@@ -174,6 +184,94 @@ function extractCsrfFromHtml(html: string) {
   ).trim();
 }
 
+function normalizeLoose(input: string) {
+  return input.replace(/[^a-z0-9]+/gi, "").toLowerCase();
+}
+
+async function applyPreferredColumns(nextPath: string, cookieHeader: string) {
+  const setupUrl = `${SCREENER_BASE}/user/columns/?next=${encodeURIComponent(nextPath)}`;
+
+  const setupRes = await fetch(setupUrl, {
+    headers: {
+      "user-agent": USER_AGENT,
+      cookie: cookieHeader,
+      referer: `${SCREENER_BASE}${nextPath}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!setupRes.ok) {
+    throw new Error(`Failed to open Screener column settings: ${setupRes.status}`);
+  }
+
+  const setupHtml = await setupRes.text();
+  if (isLoginHtml(setupHtml)) {
+    throw new Error("Screener session is not authenticated while opening column settings.");
+  }
+
+  const $ = load(setupHtml);
+  const csrf = extractCsrfFromHtml(setupHtml);
+  if (!csrf) {
+    throw new Error("Missing CSRF token in Screener column settings.");
+  }
+
+  const desired = new Set(PREFERRED_COLUMN_LABELS.map((x) => normalizeLoose(x)));
+  const selectedValues: string[] = [];
+
+  $("input[type='checkbox']").each((_, el) => {
+    const input = $(el);
+    const value = (input.attr("value") || "").trim();
+    if (!value) return;
+
+    const label =
+      (input.closest("label").text() || input.parent().text() || input.next("label").text() || "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!label) return;
+    const norm = normalizeLoose(label);
+    if (desired.has(norm)) {
+      selectedValues.push(value);
+    }
+  });
+
+  if (!selectedValues.length) {
+    // If UI markup changes, do not block data fetch; fallback to default columns.
+    return cookieHeader;
+  }
+
+  const form = new URLSearchParams();
+  form.set("csrfmiddlewaretoken", csrf);
+
+  // Include hidden fields to preserve server expectations.
+  $("input[type='hidden']").each((_, el) => {
+    const name = ($(el).attr("name") || "").trim();
+    const value = ($(el).attr("value") || "").trim();
+    if (!name || name === "csrfmiddlewaretoken") return;
+    form.append(name, value);
+  });
+
+  for (const v of selectedValues) {
+    form.append("columns", v);
+  }
+
+  const postRes = await fetch(setupUrl, {
+    method: "POST",
+    headers: {
+      "user-agent": USER_AGENT,
+      "content-type": "application/x-www-form-urlencoded",
+      cookie: cookieHeader,
+      referer: setupUrl,
+    },
+    body: form.toString(),
+    redirect: "manual",
+    cache: "no-store",
+  });
+
+  const merged = mergeCookies(cookieHeader, getSetCookieValues(postRes));
+  return merged || cookieHeader;
+}
+
 function hasCreds() {
   return Boolean(process.env.SCREENER_EMAIL && process.env.SCREENER_PASSWORD);
 }
@@ -296,6 +394,23 @@ export async function fetchScreenerSectorTable(pathOrUrl: string): Promise<Scree
   }
 
   const baseUrl = toAbsoluteUrl(normalizedPath);
+
+  // If credentials exist, align Screener column preferences for this sector before extraction.
+  // This mirrors: Browse Sector -> Edit Columns -> keep selected -> Save Columns.
+  const authSession = await getAuthenticatedSession();
+  if (authSession?.cookieHeader) {
+    try {
+      const updatedCookie = await applyPreferredColumns(normalizedPath, authSession.cookieHeader);
+      cachedAuth = {
+        ...authSession,
+        cookieHeader: updatedCookie,
+        updatedAt: Date.now(),
+      };
+    } catch {
+      // Non-fatal: continue with whatever columns are available.
+    }
+  }
+
   const fetchPage = async (page: number) => {
     const url = page <= 1 ? baseUrl : `${baseUrl}?page=${page}`;
     const { html } = await fetchWithOptionalAuth(url);
