@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Language = { code: string; name: string; speechLocale: string };
@@ -76,9 +75,6 @@ export default function LanguageTranslatorPage() {
   const [limitHit, setLimitHit] = useState(false);
 
   const [auth, setAuth] = useState<AuthState>({ authenticated: false });
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [authMsg, setAuthMsg] = useState("");
 
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -262,39 +258,6 @@ export default function LanguageTranslatorPage() {
     setIsListening(true);
   };
 
-  async function onRegister() {
-    setAuthMsg("");
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await res.json();
-    setAuthMsg(data.message || data.error || (res.ok ? "Registered" : "Failed"));
-  }
-
-  async function onLogin() {
-    setAuthMsg("");
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setAuthMsg(data.error || "Login failed");
-      return;
-    }
-    setAuthMsg("Logged in");
-    await refreshAuth();
-  }
-
-  async function onLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setAuthMsg("Logged out");
-    await refreshAuth();
-  }
-
   const wordCount = countWords(inputText);
 
   return (
@@ -302,22 +265,13 @@ export default function LanguageTranslatorPage() {
       <h1 className="text-2xl font-bold">Source → Destination Translator</h1>
       <p className="text-slate-600">Free translator is public. OpenAI translator requires approved login.</p>
 
-      <div className="rounded-xl border bg-white p-4 space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-900 to-slate-700 p-4 text-white shadow-lg">
         <h2 className="font-semibold">OpenAI Access</h2>
-        <p className="text-sm text-slate-600">
-          {auth.authenticated ? `Logged in as ${auth.username} (${auth.role})` : "Not logged in"}
+        <p className="mt-1 text-sm text-slate-200">
+          {auth.authenticated
+            ? `Logged in as ${auth.username} (${auth.role}). You can use OpenAI provider.`
+            : "Login from the top-right menu to enable OpenAI provider."}
         </p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <input className="rounded border px-3 py-2" placeholder="User ID" value={username} onChange={(e) => setUsername(e.target.value)} />
-          <input className="rounded border px-3 py-2" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button className="rounded-lg border px-3 py-2 hover:bg-slate-50" onClick={onRegister}>Register</button>
-          <button className="rounded-lg border px-3 py-2 hover:bg-slate-50" onClick={onLogin}>Login</button>
-          <button className="rounded-lg border px-3 py-2 hover:bg-slate-50" onClick={onLogout}>Logout</button>
-          {auth.role === "admin" && <Link className="rounded-lg border px-3 py-2 hover:bg-slate-50" href="/admin-console">Admin console</Link>}
-        </div>
-        {authMsg && <p className="text-sm text-slate-700">{authMsg}</p>}
       </div>
 
       <div className="rounded-xl border bg-white p-4 space-y-4">
